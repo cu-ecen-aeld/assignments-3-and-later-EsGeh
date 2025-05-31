@@ -12,3 +12,6 @@ crosstool-ng
 aesd-build
 .vscode/
 test.sh.log
+
+# ugly quickfix for ugly garbage from ugly test:
+/testfile.txt

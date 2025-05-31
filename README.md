@@ -2,7 +2,7 @@
 
 ## Assignment Instructions
 
-- [Instructions for this Assignment](https://www.coursera.org/learn/linux-system-programming-introduction-to-buildroot/supplement/U1Beh/assignment-2-instructions)
+- [Instructions for this Assignment](https://www.coursera.org/learn/linux-system-programming-introduction-to-buildroot/supplement/Nh4LM/assignment-3-part-1-instructions)
 
 ## Testing
 
