@@ -1,5 +1,8 @@
-# ignore github actions runner:
-/actions-runner/
+# local hidden dir for
+# - github actions runner
+# - cross compiler toolchain
+# - ...
+/local/
 
 *.o
 writer
