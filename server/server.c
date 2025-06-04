@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <getopt.h>
 
 #include <stdio.h>
 #include <unistd.h>
@@ -18,8 +19,10 @@
 #include <arpa/inet.h>
 
 
-#define OUTPUT_ERR(fmt,...) fprintf(stderr, fmt, ## __VA_ARGS__ )
-#define OUTPUT_INFO(fmt,...) fprintf(stdout, fmt, ## __VA_ARGS__ )
+#define OUTPUT_ERR(fmt,...) syslog(LOG_ERR, fmt, ## __VA_ARGS__ )
+// #define OUTPUT_ERR(fmt,...) fprintf(stderr, fmt, ## __VA_ARGS__ )
+#define OUTPUT_INFO(fmt,...) syslog(LOG_INFO, fmt, ## __VA_ARGS__ )
+// #define OUTPUT_INFO(fmt,...) fprintf(stdout, fmt, ## __VA_ARGS__ )
 #define OUTPUT_DEBUG(fmt,...)
 // #define OUTPUT_DEBUG(fmt,...) fprintf(stdout, fmt, ## __VA_ARGS__ )
 
@@ -33,6 +36,17 @@ typedef struct {
 	int client_socket_fd;
 	FILE* output_file;
 } data_t;
+
+typedef struct {
+	bool demonize;
+} args_t;
+
+const char short_options[] = "hd";
+const  struct option long_options[] = {
+	{ "help", no_argument, 0, 'h' },
+	{ "demonize", no_argument, 0, 'd' },
+	{ 0,0,0,0 },
+};
 
 const int PORT = 9000;
 const char* output_filename = "/var/tmp/aesdsocketdata";
@@ -51,6 +65,15 @@ ret_t server_protocol(
 void log_init(void);
 void log_exit(void);
 
+void print_cmd_line_info(
+		char* argv[]
+);
+int parse_cmd_line_args(
+		int argc,
+		char* argv[],
+		args_t* args
+);
+
 
 void int_handler(int );
 
@@ -63,11 +86,42 @@ int main(int argc, char* argv[])
 		.client_socket_fd = -1,
 		.output_file = NULL,
 	};
+	args_t args = {
+		.demonize = false,
+	};
+	// parse cmd line args:
+	{
+		int ret = parse_cmd_line_args(
+				argc, argv,
+				&args
+		);
+		// --help:
+		if( ret == -1 ) {
+			print_cmd_line_info( /*argc,*/ argv );
+			return EXIT_SUCCESS;
+		}
+		// error parsing cmd line args:
+		else if( ret != 0 ) {
+			print_cmd_line_info( /*argc,*/ argv );
+			return EXIT_FAILURE;
+		}
+	}
+	OUTPUT_INFO("-----------------------\n");
+	OUTPUT_INFO("OPTIONS:\n");
+	OUTPUT_INFO("demonize: %d\n", args.demonize);
+	OUTPUT_INFO("-----------------------\n");
 	signal(SIGINT, int_handler);
 	signal(SIGTERM, int_handler);
 	if( RET_OK != server_init(&data) ) {
 		server_exit(&data);
 		return EXIT_FAILURE;
+	}
+	if( args.demonize ) {
+		int child_pid = fork();
+		if( child_pid != 0 ) {
+			OUTPUT_INFO( "server process id: %d\n", child_pid );
+			return EXIT_SUCCESS;
+		}
 	}
 	if( RET_OK != server_run(&data) ) {
 		server_exit(&data);
@@ -325,4 +379,51 @@ void log_init(void)
 void log_exit(void)
 {
 	closelog();
+}
+
+void print_cmd_line_info(
+		char* argv[]
+)
+{
+	printf( "usage: %s [OPTIONS]\n", argv[0] );
+	printf( "\n" );
+	printf( "OPTIONS\n" );
+	printf(
+			"%-16s: print help\n",
+			"--help|-h"
+	);
+	printf(
+			"%-16s: run in background as a demon process\n",
+			"--demonize|-d"
+	);
+}
+
+int parse_cmd_line_args(
+		int argc,
+		char* argv[],
+		args_t* args
+)
+{
+	// parse options:
+	while( true ) {
+		int option_index = 0;
+		int c = getopt_long(
+				argc, argv,
+				short_options,
+				long_options,
+				&option_index
+		);
+		if( c == -1 ) { break; }
+		switch( c ) {
+			case 'h':
+				return -1;
+			break;
+			case 'd':
+				args->demonize = true;
+			break;
+			default:
+				return 1;
+		}
+	}
+	return 0;
 }
