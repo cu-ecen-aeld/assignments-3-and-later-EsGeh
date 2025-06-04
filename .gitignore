@@ -4,8 +4,10 @@
 # - ...
 /local/
 
-*.o
 /server/aesdsocket
+valgrind-out.txt
+
+*.o
 writer
 Test_*_Runner.c
 build/
