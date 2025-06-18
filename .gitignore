@@ -18,3 +18,7 @@ test.sh.log
 
 # ugly quickfix for ugly garbage from ugly test:
 /testfile.txt
+
+aesdsocket
+server/aesdsocket
+server/valgrind-out.txt
