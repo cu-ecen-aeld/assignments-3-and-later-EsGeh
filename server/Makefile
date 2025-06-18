@@ -16,5 +16,5 @@ all: aesdsocket
 clean:
 	rm -rf aesdsocket
 
-aesdsocket: server.c
-	$(CC) -o $@ $<
+aesdsocket: server.c server_impl.c server_impl.h
+	$(CC) -o $@ $^
