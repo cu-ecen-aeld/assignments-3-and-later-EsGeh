@@ -48,11 +48,8 @@ int main(int argc, char* argv[])
 {
 	log_init();
 
-	data_t data = {
-		.socket_fd = -1,
-		.client_socket_fd = -1,
-		.output_file = NULL,
-	};
+	data_t data;
+	server_zero_data(&data);
 	args_t args = {
 		.demonize = false,
 	};

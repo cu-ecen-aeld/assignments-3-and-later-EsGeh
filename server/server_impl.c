@@ -19,13 +19,64 @@
 #include <arpa/inet.h>
 
 
+/***********************
+ * Constants
+ ***********************/
+
 const int PORT = 9000;
 const char* output_filename = "/var/tmp/aesdsocketdata";
+const int BUFFER_SIZE = 256;
+
+/***********************
+ * Global Data
+ ***********************/
 
 _Atomic bool should_stop = false;
 
+bool cleanup_thread_initialized = false;
+pthread_t cleanup_thread_fd = -1;
+
+/***********************
+ * Function Declarations
+ ***********************/
+
+void* client_thread_wrapper(void* void_arg);
+
+ret_t client_thread(
+		thread_info_t* thread_info
+);
+
+void* cleanup_thread_wrapper(void* void_arg);
+
+ret_t cleanup_thread(
+		thread_list_t* thread_list,
+		sem_t* thread_finished_signal
+);
+
+/***********************
+ * Function Definitions
+ ***********************/
+
+void server_zero_data(data_t* data)
+{
+	(*data) = (data_t ){
+		.socket_fd = -1,
+		.output_file = NULL,
+		.thread_finished_signal = NULL,
+	};
+	TAILQ_INIT(&data->thread_list);
+	pthread_mutex_init( &data->output_file_mutex, NULL );
+}
+
 ret_t server_init(data_t* data)
 {
+	// thread_finished_signal semaphore:
+	data->thread_finished_signal = malloc(sizeof(sem_t));
+	if( sem_init( data->thread_finished_signal, 0, 0 ) ) {
+		perror( "sem_init" );
+		FREE( data->thread_finished_signal );
+		return RET_ERR;
+	}
 	// open output file
 	{
 		data->output_file = fopen(
@@ -36,6 +87,20 @@ ret_t server_init(data_t* data)
 			perror(output_filename);
 			return RET_ERR;
 		}
+	}
+	// cleanup_thread:
+	{
+		int ret = pthread_create(
+				&cleanup_thread_fd,
+				0,
+				cleanup_thread_wrapper,
+				data
+		);
+		if( ret != 0 ) {
+			OUTPUT_ERR( "pthread_create: %d - %s\n", ret, strerror(ret) );
+			return RET_ERR;
+		}
+		cleanup_thread_initialized = true;
 	}
 	// create socket:
 	OUTPUT_DEBUG( "socket\n" );
@@ -57,7 +122,6 @@ ret_t server_init(data_t* data)
 				SO_REUSEADDR, &y, sizeof(int)
 		);
 	}
-
 	// bind:
 	OUTPUT_DEBUG( "bind\n" );
 	{
@@ -66,7 +130,6 @@ ret_t server_init(data_t* data)
 		addr.sin_family = AF_INET; 
 		addr.sin_addr.s_addr = INADDR_ANY; 
 		addr.sin_port = htons( PORT );
-
 		// Binding newly created socket to given IP and verification 
 		if( bind(
 					data->socket_fd,
@@ -124,60 +187,143 @@ ret_t server_run(data_t* data)
 			continue;
 		}
 		OUTPUT_DEBUG( "accept\n" );
-		struct sockaddr_in client_addr;
+		thread_info_t* thread_info = malloc( sizeof(thread_info_t) );
+		thread_info->thread_finished = false;
+		thread_info->output_file = data->output_file;
+		thread_info->output_file_mutex = &data->output_file_mutex;
+		thread_info->thread_finished_signal = data->thread_finished_signal;
+		// struct sockaddr_in client_addr;
 		uint addr_len = sizeof( struct sockaddr_in );
-		data->client_socket_fd = accept(
+		int client_socket_fd = accept(
 				data->socket_fd,
-				(struct sockaddr *) &client_addr,
+				(struct sockaddr *) &thread_info->client_addr,
 				&addr_len
 		);
-		if( data->client_socket_fd == -1 ) {
+		if( client_socket_fd == -1 ) {
 			return RET_ERR;
 		}
 		OUTPUT_INFO( "Accepted connection from %s\n",
-			inet_ntoa( client_addr.sin_addr )
+			inet_ntoa( thread_info->client_addr.sin_addr )
 		);
 
-		FILE* socket_input = fdopen( data->client_socket_fd, "r" );
-		int fd_copy = dup(data->client_socket_fd);
-		FILE* socket_output = fdopen( fd_copy, "w" );
-		if( RET_OK != server_protocol(
-				socket_input,
-				socket_output,
-				data->output_file
-		))
+		thread_info->socket_input = fdopen( client_socket_fd, "r" );
+		int fd_copy = dup( client_socket_fd );
+		thread_info->socket_output = fdopen( fd_copy, "w" );
 		{
-			OUTPUT_ERR( "error talking with client\n" );
-		}
-		else {
-			OUTPUT_INFO( "Closed connection from  %s\n",
-				inet_ntoa( client_addr.sin_addr )
+			int ret = pthread_create(
+					&thread_info->thread_fd,
+					0,
+					client_thread_wrapper,
+					thread_info
 			);
-		}
-		// close client socket(s):
-		{
-			if( 0 != fclose( socket_input ) )
-			{
-				OUTPUT_ERR("ERROR: failed closing client_socket input\n" );
+			if( ret != 0 ) {
+				OUTPUT_ERR( "pthread_create: %d - %s\n", ret, strerror(ret) );
 				return RET_ERR;
 			}
-			if( 0 != fclose( socket_output ) )
-			{
-				OUTPUT_ERR("ERROR: failed closing client_socket output\n" );
-				return RET_ERR;
-			}
-			data->client_socket_fd = -1;
 		}
 	}
 	return RET_OK;
 }
 
-const int BUFFER_SIZE = 256;
+void* client_thread_wrapper(void* void_arg)
+{
+	thread_info_t* arg = (thread_info_t* )void_arg;
+	arg->ret = client_thread( arg );
+	return &arg->ret;
+}
+
+ret_t client_thread(
+		thread_info_t* thread_info
+)
+{
+	ret_t ret = RET_OK;
+	pthread_mutex_lock( thread_info->output_file_mutex );
+	if( RET_OK != server_protocol(
+			thread_info->socket_input,
+			thread_info->socket_output,
+			thread_info->output_file
+			// thread_info->output_file_mutex
+	))
+	{
+		OUTPUT_ERR( "error talking with client\n" );
+		ret = RET_ERR;
+	}
+	else {
+		OUTPUT_INFO( "Closed connection from  %s\n",
+			inet_ntoa( thread_info->client_addr.sin_addr )
+		);
+	}
+	pthread_mutex_unlock( thread_info->output_file_mutex );
+	// close client socket(s):
+	{
+		if( 0 != fclose( thread_info->socket_input ) )
+		{
+			OUTPUT_ERR("ERROR: failed closing client_socket input\n" );
+			ret = RET_ERR;
+		}
+		if( 0 != fclose( thread_info->socket_output ) )
+		{
+			OUTPUT_ERR("ERROR: failed closing client_socket output\n" );
+			ret = RET_ERR;
+		}
+	}
+	// signalize the cleanup thread, that we are done:
+	thread_info->thread_finished = true;
+	sem_post( thread_info->thread_finished_signal );
+	return ret;
+}
+
+void* cleanup_thread_wrapper(void* void_arg)
+{
+	data_t* data = (data_t* )void_arg;
+	static ret_t ret;
+	ret = cleanup_thread(
+			&data->thread_list,
+			data->thread_finished_signal
+	);
+	return &ret;
+}
+
+ret_t cleanup_thread(
+		thread_list_t* thread_list,
+		sem_t* thread_finished_signal
+)
+{
+	OUTPUT_DEBUG( "cleanup_thread: START\n" );
+	while(true) {
+		if( sem_wait(thread_finished_signal) ) {
+			perror("sem_wait");
+			return RET_ERR;
+		}
+		OUTPUT_DEBUG( "cleanup_thread: run...\n" );
+		// search for the finished thread
+    thread_info_t* thread_info = NULL;
+    thread_info_t* current_node = NULL;
+    TAILQ_FOREACH(current_node, thread_list, nodes) {
+			if( current_node->thread_finished ) {
+				thread_info = current_node;
+			}
+		}
+		if( thread_info == NULL ) {
+			OUTPUT_DEBUG( "cleanup_thread: STOP\n" );
+			return RET_OK;
+		}
+		// join thread and delete corresponding list node:
+		OUTPUT_DEBUG( "cleanup_thread: join client thread\n" );
+		ret_t* thread_ret;
+		if( pthread_join( thread_info->thread_fd, (void** )&thread_ret ) ) {
+			perror( "pthread_join" );
+		}
+		TAILQ_REMOVE(thread_list, thread_info, nodes);
+		FREE(thread_info);
+	}
+}
 
 ret_t server_protocol(
 		FILE* socket_input,
 		FILE* socket_output,
 		FILE* output_file
+		// // pthread_mutex_t* output_file_mutex
 )
 {
 	char buffer[BUFFER_SIZE];
@@ -230,26 +376,55 @@ ret_t server_protocol(
 
 ret_t server_exit(data_t* data)
 {
-	OUTPUT_DEBUG( "server_exit\n" );
-	// close:
 	ret_t ret = RET_OK;
+	OUTPUT_DEBUG( "server_exit\n" );
+	ret_t* cleanup_ret;
+	if( cleanup_thread_initialized ) {
+		OUTPUT_DEBUG( "join cleanup_thread\n" );
+		sem_post( data->thread_finished_signal );
+		if( pthread_join( cleanup_thread_fd, (void** )&cleanup_ret) ) {
+			perror( "pthread_join" );
+		}
+	}
+	// socket:
 	if( data->socket_fd != -1 ) {
 		if( close(data->socket_fd) == -1 ) {
 			perror("socket");
 			ret = RET_ERR;
 		}
 	}
-	if( data->client_socket_fd != -1 ) {
-		if( close(data->client_socket_fd) == -1 ) {
-			perror("client_socket");
-			ret = RET_ERR;
-		}
-	}
+	// output file:
 	if( data->output_file != NULL ) {
 		if( 0 != fclose( data->output_file ) ) {
 			perror(output_filename);
 			ret = RET_ERR;
 		}
+	}
+	// output_file_mutex:
+	{
+		int err_code = pthread_mutex_destroy( &data->output_file_mutex );
+		if( err_code != 0 ) {
+			OUTPUT_ERR( "ERROR: 'pthread_mutex_destroy': %d - %s\n", err_code, strerror(err_code) );
+			ret = RET_ERR;
+		}
+	}
+	if( data->thread_finished_signal != NULL ) {
+		if( sem_destroy( data->thread_finished_signal ) ) {
+			perror( "sem_destroy" );
+			ret = RET_ERR;
+		}
+		FREE( data->thread_finished_signal );
+	}
+	// free queue:
+	{
+		thread_info_t * e = NULL;
+		while (!TAILQ_EMPTY(&data->thread_list))
+		{
+			e = TAILQ_FIRST(&data->thread_list);
+			TAILQ_REMOVE(&data->thread_list, e, nodes);
+			free(e);
+			e = NULL;
+		}	
 	}
 	return ret;
 }

@@ -3,7 +3,8 @@
 #######################
 
 CROSS_COMPILE=
-CC=$(CROSS_COMPILE)gcc -Wall -Wextra
+DEFINES=
+CC=$(CROSS_COMPILE)gcc -g -Wall -Wextra $(DEFINES)
 
 #######################
 # Targets
@@ -17,4 +18,4 @@ clean:
 	rm -rf aesdsocket
 
 aesdsocket: server.c server_impl.c server_impl.h
-	$(CC) -o $@ $^
+	$(CC) -o $@ $^ -pthread
