@@ -74,18 +74,18 @@ int main(int argc, char* argv[])
 	OUTPUT_INFO("OPTIONS:\n");
 	OUTPUT_INFO("demonize: %d\n", args.demonize);
 	OUTPUT_INFO("-----------------------\n");
-	signal(SIGINT, int_handler);
-	signal(SIGTERM, int_handler);
-	if( RET_OK != server_init(&data) ) {
-		server_exit(&data);
-		return EXIT_FAILURE;
-	}
 	if( args.demonize ) {
 		int child_pid = fork();
 		if( child_pid != 0 ) {
 			OUTPUT_INFO( "server process id: %d\n", child_pid );
 			return EXIT_SUCCESS;
 		}
+	}
+	signal(SIGINT, int_handler);
+	signal(SIGTERM, int_handler);
+	if( RET_OK != server_init(&data) ) {
+		server_exit(&data);
+		return EXIT_FAILURE;
 	}
 	if( RET_OK != server_run(&data) ) {
 		server_exit(&data);
@@ -102,6 +102,7 @@ int main(int argc, char* argv[])
 
 void int_handler(int)
 {
+	// OUTPUT_DEBUG("interrupt\n");
 	should_stop = true;
 }
 

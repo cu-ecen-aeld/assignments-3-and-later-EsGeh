@@ -20,6 +20,15 @@
 
 
 /***********************
+ * Types
+ ***********************/
+
+typedef struct {
+	FILE* output_file;
+	pthread_mutex_t* output_file_mutex;
+} clock_thread_info_t;
+
+/***********************
  * Constants
  ***********************/
 
@@ -36,6 +45,10 @@ _Atomic bool should_stop = false;
 bool cleanup_thread_initialized = false;
 pthread_t cleanup_thread_fd = -1;
 
+clock_thread_info_t clock_thread_info;
+bool clock_thread_initialized = false;
+pthread_t clock_thread_fd = -1;
+
 /***********************
  * Function Declarations
  ***********************/
@@ -51,6 +64,12 @@ void* cleanup_thread_wrapper(void* void_arg);
 ret_t cleanup_thread(
 		thread_list_t* thread_list,
 		sem_t* thread_finished_signal
+);
+
+void* clock_thread_wrapper(void* void_arg);
+ret_t clock_thread(
+	FILE* output_file,
+	pthread_mutex_t* output_file_mutex
 );
 
 /***********************
@@ -101,6 +120,24 @@ ret_t server_init(data_t* data)
 			return RET_ERR;
 		}
 		cleanup_thread_initialized = true;
+	}
+	// clock_thread:
+	{
+		clock_thread_info = (clock_thread_info_t ){
+			.output_file = data->output_file,
+			.output_file_mutex = &data->output_file_mutex,
+		};
+		int ret = pthread_create(
+				&clock_thread_fd,
+				0,
+				clock_thread_wrapper,
+				&clock_thread_info
+		);
+		if( ret != 0 ) {
+			OUTPUT_ERR( "pthread_create: %d - %s\n", ret, strerror(ret) );
+			return RET_ERR;
+		}
+		clock_thread_initialized = true;
 	}
 	// create socket:
 	OUTPUT_DEBUG( "socket\n" );
@@ -319,6 +356,62 @@ ret_t cleanup_thread(
 	}
 }
 
+void* clock_thread_wrapper(void* void_arg)
+{
+	clock_thread_info_t* arg = (clock_thread_info_t* )void_arg;
+	static ret_t ret;
+	ret = clock_thread(
+			arg->output_file,
+			arg->output_file_mutex
+	);
+	return &ret;
+}
+
+ret_t clock_thread(
+	FILE* output_file,
+	pthread_mutex_t* output_file_mutex
+)
+{
+	char buffer[BUFFER_SIZE];
+  time_t current_time;
+	OUTPUT_DEBUG( "clock_thread: START\n" );
+	while(true) {
+		sleep(10);
+		if( should_stop ) {
+			OUTPUT_DEBUG( "clock_thread: STOP\n" );
+			return RET_OK;
+		}
+		OUTPUT_DEBUG( "clock_thread: TICK\n" );
+		current_time = time(NULL);
+		struct tm* local_time = localtime(&current_time);
+		if( local_time == NULL ) {
+			perror("localtime");
+			return RET_ERR;
+		}
+		strftime(
+				buffer,
+				BUFFER_SIZE,
+				"timestamp:%a, %d %b %Y %T %z\n",
+				local_time
+		);
+		OUTPUT_DEBUG( "clock_thread: WRITE '%s'", buffer );
+		pthread_mutex_lock(output_file_mutex);
+		{
+			int length = strlen( buffer );
+			int write_ret = fwrite(buffer, sizeof(char), length, output_file );
+			if( length*sizeof(char) != (size_t )write_ret ) {
+				pthread_mutex_unlock(output_file_mutex);
+				OUTPUT_ERR( "ERROR: failed writing to output file\n" );
+				return RET_ERR;
+			}
+			// OUTPUT_DEBUG( "flush\n" );
+			fflush( output_file );
+		}
+		pthread_mutex_unlock(output_file_mutex);
+		OUTPUT_DEBUG( "clock_thread: WRITE done\n" );
+	}
+}
+
 ret_t server_protocol(
 		FILE* socket_input,
 		FILE* socket_output,
@@ -378,11 +471,18 @@ ret_t server_exit(data_t* data)
 {
 	ret_t ret = RET_OK;
 	OUTPUT_DEBUG( "server_exit\n" );
-	ret_t* cleanup_ret;
 	if( cleanup_thread_initialized ) {
+		ret_t* cleanup_ret;
 		OUTPUT_DEBUG( "join cleanup_thread\n" );
 		sem_post( data->thread_finished_signal );
 		if( pthread_join( cleanup_thread_fd, (void** )&cleanup_ret) ) {
+			perror( "pthread_join" );
+		}
+	}
+	if( clock_thread_initialized ) {
+		ret_t* clock_ret;
+		OUTPUT_DEBUG( "join clock_thread\n" );
+		if( pthread_join( clock_thread_fd, (void** )&clock_ret) ) {
 			perror( "pthread_join" );
 		}
 	}
@@ -418,6 +518,9 @@ ret_t server_exit(data_t* data)
 	// free queue:
 	{
 		thread_info_t * e = NULL;
+		if( !TAILQ_EMPTY(&data->thread_list) ) {
+			OUTPUT_ERR("thread_list is not empty");
+		}
 		while (!TAILQ_EMPTY(&data->thread_list))
 		{
 			e = TAILQ_FIRST(&data->thread_list);
@@ -425,6 +528,10 @@ ret_t server_exit(data_t* data)
 			free(e);
 			e = NULL;
 		}	
+	}
+	if( unlink( output_filename ) ) {
+		perror(output_filename);
+		ret = RET_ERR;
 	}
 	return ret;
 }
