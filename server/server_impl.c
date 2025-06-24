@@ -48,6 +48,7 @@ pthread_t cleanup_thread_fd = -1;
 clock_thread_info_t clock_thread_info;
 bool clock_thread_initialized = false;
 pthread_t clock_thread_fd = -1;
+sem_t* clock_sem = NULL;
 
 /***********************
  * Function Declarations
@@ -72,6 +73,8 @@ ret_t clock_thread(
 	pthread_mutex_t* output_file_mutex
 );
 
+void timer_callback(int sig);
+
 /***********************
  * Function Definitions
  ***********************/
@@ -82,6 +85,7 @@ void server_zero_data(data_t* data)
 		.socket_fd = -1,
 		.output_file = NULL,
 		.thread_finished_signal = NULL,
+		.timer = NULL
 	};
 	TAILQ_INIT(&data->thread_list);
 	pthread_mutex_init( &data->output_file_mutex, NULL );
@@ -94,6 +98,12 @@ ret_t server_init(data_t* data)
 	if( sem_init( data->thread_finished_signal, 0, 0 ) ) {
 		perror( "sem_init" );
 		FREE( data->thread_finished_signal );
+		return RET_ERR;
+	}
+	clock_sem = malloc( sizeof(sem_t) );
+	if( sem_init( clock_sem, 0, 0 ) ) {
+		perror( "sem_init" );
+		FREE( clock_sem );
 		return RET_ERR;
 	}
 	// open output file
@@ -184,6 +194,22 @@ ret_t server_init(data_t* data)
 		perror("socket");
 		return RET_ERR;
 	}
+	signal( SIGALRM, timer_callback );
+	struct itimerspec timer_spec = {
+		.it_value.tv_sec = 10,
+		.it_value.tv_nsec = 0,
+		.it_interval.tv_sec = 10,
+		.it_interval.tv_nsec = 0,
+	};
+	data->timer = malloc( sizeof(timer_t) );
+	if( timer_create( CLOCK_REALTIME, 0, data->timer) ) {
+		perror("timer_create");
+		return RET_ERR;
+	}
+	if( timer_settime( *(data->timer), 0, &timer_spec, NULL) ) {
+		perror("timer_settime");
+		return RET_ERR;
+	}
 	// syslog( LOG_INFO, "listening...\n" );
 	return RET_OK;
 }
@@ -196,32 +222,25 @@ ret_t server_run(data_t* data)
 	// server:
 	while( true )
 	{
-		struct timeval timeout;
-		timeout.tv_sec = 1;
-		timeout.tv_usec = 0;
 		// OUTPUT_DEBUG("select\n");
 		fd_set available = read_set;
 		int select_ret = select(
 				data->socket_fd + 1,
 				&available,
 				NULL, NULL,
-				&timeout
+				NULL
 		);
 		if( select_ret == -1 ) {
 			if( errno == EINTR ) {
+				if( should_stop ) {
+					// OUTPUT_DEBUG("exit wait loop\n");
+					return RET_OK;
+				}
 				// OUTPUT_DEBUG("interrupted, continue\n");
 				continue;
 			}
 			OUTPUT_ERR("ERROR: select: %d - %s\n", errno, strerror(errno) );
 			return RET_ERR;
-		}
-		if( ! FD_ISSET( data->socket_fd, &available ) ) {
-			// OUTPUT_DEBUG("waiting...\n");
-			if( should_stop ) {
-				// OUTPUT_DEBUG("exit wait loop\n");
-				return RET_OK;
-			}
-			continue;
 		}
 		OUTPUT_DEBUG( "accept\n" );
 		thread_info_t* thread_info = malloc( sizeof(thread_info_t) );
@@ -260,6 +279,12 @@ ret_t server_run(data_t* data)
 		}
 	}
 	return RET_OK;
+}
+
+void server_stop(data_t* data)
+{
+	should_stop = true;
+	sem_post( clock_sem );
 }
 
 void* client_thread_wrapper(void* void_arg)
@@ -376,7 +401,10 @@ ret_t clock_thread(
   time_t current_time;
 	OUTPUT_DEBUG( "clock_thread: START\n" );
 	while(true) {
-		sleep(10);
+		if( sem_wait( clock_sem ) ) {
+			perror("sem_wait");
+			return RET_ERR;
+		}
 		if( should_stop ) {
 			OUTPUT_DEBUG( "clock_thread: STOP\n" );
 			return RET_OK;
@@ -471,6 +499,13 @@ ret_t server_exit(data_t* data)
 {
 	ret_t ret = RET_OK;
 	OUTPUT_DEBUG( "server_exit\n" );
+	if( data->timer != NULL ) {
+		if( timer_delete( *(data->timer) ) ) {
+			perror("timer_delete");
+			ret = RET_ERR;
+		}
+		FREE( data->timer );
+	}
 	if( cleanup_thread_initialized ) {
 		ret_t* cleanup_ret;
 		OUTPUT_DEBUG( "join cleanup_thread\n" );
@@ -515,6 +550,13 @@ ret_t server_exit(data_t* data)
 		}
 		FREE( data->thread_finished_signal );
 	}
+	if( clock_sem != NULL ) {
+		if( sem_destroy( clock_sem ) ) {
+			perror( "sem_destroy" );
+			ret = RET_ERR;
+		}
+		FREE( clock_sem );
+	}
 	// free queue:
 	{
 		thread_info_t * e = NULL;
@@ -534,4 +576,11 @@ ret_t server_exit(data_t* data)
 		ret = RET_ERR;
 	}
 	return ret;
+}
+
+void timer_callback(int )
+{
+	if( clock_sem ) {
+		sem_post( clock_sem );
+	}
 }

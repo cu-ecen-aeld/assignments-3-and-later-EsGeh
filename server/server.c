@@ -44,11 +44,12 @@ int parse_cmd_line_args(
 
 void int_handler(int );
 
+static data_t data;
+
 int main(int argc, char* argv[])
 {
 	log_init();
 
-	data_t data;
 	server_zero_data(&data);
 	args_t args = {
 		.demonize = false,
@@ -93,7 +94,6 @@ int main(int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 	if( RET_OK != server_exit(&data) ) {
-		server_exit(&data);
 		log_exit();
 		return EXIT_FAILURE;
 	}
@@ -102,8 +102,7 @@ int main(int argc, char* argv[])
 
 void int_handler(int)
 {
-	// OUTPUT_DEBUG("interrupt\n");
-	should_stop = true;
+	server_stop(&data);
 }
 
 void log_init(void)

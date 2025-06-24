@@ -66,17 +66,12 @@ typedef struct {
 	pthread_mutex_t output_file_mutex;
 	sem_t* thread_finished_signal;
 	thread_list_t thread_list;
+	timer_t* timer;
 } data_t;
 
 typedef struct {
 	bool demonize;
 } args_t;
-
-/***********************
- * Global Data
- ***********************/
-
-extern _Atomic bool should_stop;
 
 /***********************
  * Function Declarations
@@ -90,5 +85,7 @@ ret_t server_protocol(
 		FILE* socket_input,
 		FILE* socket_output,
 		FILE* output_file
-		// pthread_mutex_t* output_file_mutex
 );
+
+// may be called in a interrupt handler:
+void server_stop(data_t* data);
