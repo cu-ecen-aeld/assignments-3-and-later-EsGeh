@@ -42,7 +42,7 @@ int parse_cmd_line_args(
 );
 
 
-void int_handler(int );
+void int_handler(int sig);
 
 static data_t data;
 
@@ -100,7 +100,7 @@ int main(int argc, char* argv[])
 	return EXIT_SUCCESS;
 }
 
-void int_handler(int)
+void int_handler(int sig)
 {
 	server_stop(&data);
 }

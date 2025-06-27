@@ -578,7 +578,7 @@ ret_t server_exit(data_t* data)
 	return ret;
 }
 
-void timer_callback(int )
+void timer_callback(int sig)
 {
 	if( clock_sem ) {
 		sem_post( clock_sem );
