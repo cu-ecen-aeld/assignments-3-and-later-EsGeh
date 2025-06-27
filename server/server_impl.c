@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <dirent.h>
 #include <signal.h>
+#include <time.h>
 
 // sockets:
 #include <sys/types.h>
