@@ -18,4 +18,4 @@ clean:
 	rm -rf aesdsocket
 
 aesdsocket: server.c server_impl.c server_impl.h
-	$(CC) -o $@ $^ -pthread
+	$(CC) -o $@ $^ -pthread -lrt
