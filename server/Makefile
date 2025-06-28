@@ -4,7 +4,12 @@
 
 CROSS_COMPILE=
 DEFINES=
-CC=$(CROSS_COMPILE)gcc -g -Wall -Wextra $(DEFINES)
+
+CFLAGS ?= -g -Wall -Wextra
+
+CC ?= $(CROSS_COMPILE)gcc $(DEFINES)
+
+LDFLAGS ?= -lpthread -lrt
 
 #######################
 # Targets
@@ -18,4 +23,4 @@ clean:
 	rm -rf aesdsocket
 
 aesdsocket: server.c server_impl.c server_impl.h
-	$(CC) -o $@ $^ -pthread -lrt
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
