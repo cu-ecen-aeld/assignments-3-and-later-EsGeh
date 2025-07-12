@@ -47,6 +47,26 @@ struct aesd_buffer_entry* aesd_circular_buffer_find_entry_offset_for_fpos(
 	return NULL;
 }
 
+unsigned int aesd_circular_buffer_get_count(
+		struct aesd_circular_buffer *buffer
+)
+{
+	unsigned int entry_count = 0;
+	if( !buffer->full ) {
+		if( buffer->out_offs <= buffer->in_offs) {
+			entry_count = buffer->in_offs - buffer->out_offs;
+		}
+		else {
+			entry_count = (buffer->in_offs + AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) - buffer->out_offs;
+		}
+	}
+	else {
+		// assert( buffer->out_offs == buffer->in_offs );
+		entry_count = AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+	}
+	return entry_count;
+}
+
 /**
 * Adds entry @param add_entry to @param buffer in the location specified in buffer->in_offs.
 * If the buffer was already full, overwrites the oldest entry and advances buffer->out_offs to the
@@ -60,19 +80,7 @@ void aesd_circular_buffer_add_entry(
 )
 {
 	// 1. determine number of entries:
-	unsigned int entry_count;
-	if( !buffer->full ) {
-		if( buffer->out_offs <= buffer->in_offs) {
-			entry_count = buffer->in_offs - buffer->out_offs;
-		}
-		else {
-			entry_count = (buffer->in_offs + AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) - buffer->out_offs;
-		}
-	}
-	else {
-		// assert( buffer->out_offs == buffer->in_offs );
-		entry_count = AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
-	}
+	unsigned int entry_count = aesd_circular_buffer_get_count( buffer );
 	DEBUG_LOG( "count: %d\n", entry_count );
 	// 2. add element:
 	buffer->entry[buffer->in_offs] = (*add_entry);
