@@ -1,0 +1,23 @@
+#!/bin/sh
+
+base_dir=$(dirname $0)
+
+cmd=
+
+case "$1" in
+	start)
+		cmd=start
+		;;
+	stop)
+		cmd=stop
+		;;
+	*)
+		echo "Usage: $0 [start|stop]"
+		exit 1
+esac
+
+if [ "$cmd" = "start" ]; then
+	aesdchar_load
+elif [ "$cmd" = "stop" ]; then
+	aesdchar_unload
+fi

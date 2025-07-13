@@ -3,7 +3,7 @@
 #######################
 
 CROSS_COMPILE=
-DEFINES=
+DEFINES ?= -DUSE_AESD_CHAR_DEVICE=1
 
 CFLAGS ?= -g -Wall -Wextra
 

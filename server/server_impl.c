@@ -34,8 +34,12 @@ typedef struct {
  ***********************/
 
 const int PORT = 9000;
-const char* output_filename = "/var/tmp/aesdsocketdata";
 const int BUFFER_SIZE = 256;
+#ifdef USE_AESD_CHAR_DEVICE
+const char* output_filename = "/dev/aesdchar";
+#else
+const char* output_filename = "/var/tmp/aesdsocketdata";
+#endif
 
 /***********************
  * Global Data
@@ -410,6 +414,7 @@ ret_t clock_thread(
 			OUTPUT_DEBUG( "clock_thread: STOP\n" );
 			return RET_OK;
 		}
+#ifdef USE_AESD_CHAR_DEVICE
 		OUTPUT_DEBUG( "clock_thread: TICK\n" );
 		current_time = time(NULL);
 		struct tm* local_time = localtime(&current_time);
@@ -438,6 +443,7 @@ ret_t clock_thread(
 		}
 		pthread_mutex_unlock(output_file_mutex);
 		OUTPUT_DEBUG( "clock_thread: WRITE done\n" );
+#endif
 	}
 }
 
@@ -572,10 +578,12 @@ ret_t server_exit(data_t* data)
 			e = NULL;
 		}	
 	}
+#ifdef USE_AESD_CHAR_DEVICE
 	if( unlink( output_filename ) ) {
 		perror(output_filename);
 		ret = RET_ERR;
 	}
+#endif
 	return ret;
 }
 
