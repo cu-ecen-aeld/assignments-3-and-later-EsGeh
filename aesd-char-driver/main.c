@@ -59,7 +59,6 @@ int aesd_open(struct inode *inode, struct file *filp)
 	/**
 	 * TODO: handle open
 	 */
-
 	return 0;
 }
 
@@ -175,7 +174,9 @@ ssize_t aesd_write(
 				aesd_circular_buffer_get_count( &aesd_device.buffer ) == AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED
 		) {
 			struct aesd_buffer_entry* last_entry = &aesd_device.buffer.entry[ aesd_device.buffer.in_offs];
-			kfree( last_entry );
+			kfree( last_entry->buffptr );
+			last_entry->buffptr = NULL;
+			last_entry->size = 0;
 		}
 		aesd_circular_buffer_add_entry(
 				&aesd_device.buffer,
