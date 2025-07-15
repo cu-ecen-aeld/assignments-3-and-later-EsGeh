@@ -81,47 +81,38 @@ ssize_t aesd_read(
 	ssize_t ret = 0;
 	mutex_lock( &aesd_device.lock );
 	PDEBUG("read %zu bytes with offset %lld\n",count,*f_pos);
-	size_t pos = *f_pos;
-	while( true )
-	{
-		// PDEBUG("pos %ld\n",pos);
-		size_t offset = 0;
-		struct aesd_buffer_entry* entry = aesd_circular_buffer_find_entry_offset_for_fpos(
-				&aesd_device.buffer,
-				pos,
-				&offset
-		);
-		if( !entry ) {
-			ret = pos - (*f_pos);
-			(*f_pos) += ret;
-			goto end;
-		}
-		size_t bytes_to_copy = ((*f_pos)+count) - pos;
-		// PDEBUG("bytes_to_copy: %ld", bytes_to_copy);
-		if( bytes_to_copy == 0 ) {
-			ret = pos - (*f_pos);
-			(*f_pos) += ret;
-			goto end;
-		}
-		// bytes to copy from current entry:
-		if( bytes_to_copy > (entry->size - offset) ) {
-			bytes_to_copy = entry->size - offset;
-		}
-		// PDEBUG("bytes_to_copy: %ld", bytes_to_copy);
-		if( copy_to_user(
-				&buf[pos],
-				&entry->buffptr[offset],
-				bytes_to_copy
-		) ) {
-			ret = -EFAULT;
-			goto end;
-		}
-		// PDEBUG("appending: '%.*s'", (int )bytes_to_copy, entry->buffptr );
-		pos += bytes_to_copy;
+	size_t offset = 0;
+	struct aesd_buffer_entry* entry = aesd_circular_buffer_find_entry_offset_for_fpos(
+			&aesd_device.buffer,
+			*f_pos,
+			&offset
+	);
+	if( !entry ) {
+		ret = 0;
+		goto end;
 	}
+	if( count == 0 ) {
+		ret = 0;
+		goto end;
+	}
+	size_t bytes_to_copy = count;
+	if( entry->size - offset < bytes_to_copy ) {
+		bytes_to_copy = entry->size;
+	}
+	if( copy_to_user(
+			buf,
+			&entry->buffptr[offset],
+			bytes_to_copy
+	) ) {
+		ret = -EFAULT;
+		goto end;
+	}
+	(*f_pos) += bytes_to_copy;
+	ret = bytes_to_copy;
+	goto end;
 
 end:
-	PDEBUG("returning: %ld", ret );
+	PDEBUG("read returns: %ld", ret );
 	mutex_unlock( &aesd_device.lock );
 	return ret;
 }
@@ -159,6 +150,7 @@ ssize_t aesd_write(
 		mutex_unlock( &aesd_device.lock );
 		return -ENOMEM;
 	}
+	PDEBUG("write copying to local...");
 	// copy to buffer entry:
 	if( copy_from_user(
 			&aesd_device.current_entry.buffptr[insert_pos],
@@ -169,7 +161,8 @@ ssize_t aesd_write(
 		return -EFAULT;
 	}
 	// copy entry to ringbuffer:
-	if( buf[count-1] == '\n' ) {
+	if( aesd_device.current_entry.buffptr[insert_pos + count - 1] == '\n' ) {
+		PDEBUG("write to ringbuffer...");
 		if(
 				aesd_circular_buffer_get_count( &aesd_device.buffer ) == AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED
 		) {
@@ -186,6 +179,9 @@ ssize_t aesd_write(
 			.buffptr = NULL,
 			.size = 0,
 		};
+		PDEBUG("write update pos...");
+		(*f_pos) += count;
+		PDEBUG( "write: f_pos=%lld", *f_pos );
 	}
 	mutex_unlock( &aesd_device.lock );
 	return count;
@@ -258,10 +254,6 @@ void aesd_cleanup_module(void)
 	}
 
 	cdev_del(&aesd_device.cdev);
-
-	/**
-	 * TODO: cleanup AESD specific poritions here as necessary
-	 */
 
 	unregister_chrdev_region(devno, 1);
 	mutex_destroy( &aesd_device.lock );
