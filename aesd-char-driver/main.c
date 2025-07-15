@@ -36,6 +36,7 @@ ssize_t aesd_write(
 		size_t count,
 		loff_t *f_pos
 );
+loff_t llseek(struct file* file, loff_t offset, int whence);
 static int aesd_setup_cdev(struct aesd_dev *dev);
 int aesd_init_module(void);
 void aesd_cleanup_module(void);
@@ -51,6 +52,7 @@ struct file_operations aesd_fops = {
 	.write =    aesd_write,
 	.open =     aesd_open,
 	.release =  aesd_release,
+	.llseek =  llseek,
 };
 
 int aesd_open(struct inode *inode, struct file *filp)
@@ -185,6 +187,17 @@ ssize_t aesd_write(
 	}
 	mutex_unlock( &aesd_device.lock );
 	return count;
+}
+
+loff_t llseek(struct file* file, loff_t offset, int whence)
+{
+	loff_t full_size = aesd_circular_buffer_get_size( &aesd_device.buffer );
+	PDEBUG( "llseek fullsize: %lld", full_size );
+	loff_t ret = fixed_size_llseek( file, offset, whence, 
+			full_size
+	);
+	PDEBUG( "llseek return: %lld", ret );
+	return ret;
 }
 
 static int aesd_setup_cdev(struct aesd_dev *dev)

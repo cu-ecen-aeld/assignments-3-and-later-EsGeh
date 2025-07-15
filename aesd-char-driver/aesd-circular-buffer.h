@@ -42,6 +42,10 @@ extern unsigned int aesd_circular_buffer_get_count(
 		struct aesd_circular_buffer *buffer
 );
 
+extern size_t aesd_circular_buffer_get_size(
+		struct aesd_circular_buffer *buffer
+);
+
 extern struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(
 		struct aesd_circular_buffer *buffer,
   	size_t char_offset,

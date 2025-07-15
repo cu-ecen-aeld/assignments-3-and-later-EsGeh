@@ -67,6 +67,21 @@ unsigned int aesd_circular_buffer_get_count(
 	return entry_count;
 }
 
+size_t aesd_circular_buffer_get_size(
+		struct aesd_circular_buffer *buffer
+)
+{
+	size_t size = 0;
+	unsigned int pos = buffer->out_offs;
+	do
+	{
+		size += buffer->entry[pos].size;
+		pos = (pos + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+	}
+	while( pos != buffer->out_offs );
+	return size;
+}
+
 /**
 * Adds entry @param add_entry to @param buffer in the location specified in buffer->in_offs.
 * If the buffer was already full, overwrites the oldest entry and advances buffer->out_offs to the
