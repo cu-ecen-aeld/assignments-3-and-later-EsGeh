@@ -1,4 +1,5 @@
 #include "server_impl.h"
+#include "../aesd-char-driver/aesd_ioctl.h"
 
 
 #include <stdlib.h>
@@ -471,6 +472,42 @@ ret_t server_protocol(
 		}
 		int length = strlen( buffer );
 		OUTPUT_DEBUG( "received %d bytes\n", length );
+		// AESDCHAR_IOCSEEKTO:X,Y
+		{
+			const char* prefix = "AESDCHAR_IOCSEEKTO";
+			const int prefix_length = strlen( prefix );
+			if(
+					!strncmp( prefix, buffer, strlen(prefix) )
+					&& length > prefix_length
+					&& buffer[prefix_length] == ':'
+					&& (strchr( &buffer[prefix_length+1], ',' ) != NULL)
+			) {
+				OUTPUT_DEBUG( "AESDCHAR_IOCSEEKTO found!\n" );
+				int x = 0;
+				char* endptr = NULL;
+				char* current_str = &buffer[prefix_length+1];
+				x = strtol( current_str, &endptr, 10);
+				if( endptr != current_str && endptr[0] == ',' ) {
+					current_str = endptr+1;
+					int y = strtol( current_str, &endptr, 10);
+					if( endptr != current_str && endptr[0] == '\0' ) {
+						struct aesd_seekto seek_to = {
+							.write_cmd = x,
+							.write_cmd_offset = y,
+						};
+						if( !ioctl(
+								fileno(output_file),
+								AESDCHAR_IOCSEEKTO,
+								&seek_to
+						) ) {
+							OUTPUT_ERR( "ERROR: ioctl failed with: %d - '%s'\n", errno, strerror(errno) );
+							return RET_ERR;
+						}
+						continue;
+					}
+				}
+			}
+		}
 		int write_ret = fwrite(buffer, sizeof(char), length, output_file );
 		if( length*sizeof(char) != (size_t )write_ret ) {
 			OUTPUT_ERR( "ERROR: failed writing to output file\n" );

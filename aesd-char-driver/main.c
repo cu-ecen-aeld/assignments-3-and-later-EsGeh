@@ -17,7 +17,10 @@
 #include <linux/types.h>
 #include <linux/cdev.h>
 #include <linux/fs.h> // file_operations
+
 #include "aesdchar.h"
+#include "aesd_ioctl.h"
+
 
 MODULE_AUTHOR("Samuel Gfrörer");
 MODULE_LICENSE("Dual BSD/GPL");
@@ -37,6 +40,15 @@ ssize_t aesd_write(
 		loff_t *f_pos
 );
 loff_t llseek(struct file* file, loff_t offset, int whence);
+long aesd_adjust_file_offset(
+		struct file* file,
+		uint32_t write_cmd,
+		uint32_t write_cmd_offset
+);
+
+long unlocked_ioctl(struct file* file, unsigned int cmd, unsigned long arg);
+// long compat_ioctl(struct file* file, unsigned int cmd, unsigned long arg);
+
 static int aesd_setup_cdev(struct aesd_dev *dev);
 int aesd_init_module(void);
 void aesd_cleanup_module(void);
@@ -53,6 +65,8 @@ struct file_operations aesd_fops = {
 	.open =     aesd_open,
 	.release =  aesd_release,
 	.llseek =  llseek,
+	.unlocked_ioctl = unlocked_ioctl,
+	// .compat_ioctl = compat_ioctl,
 };
 
 int aesd_open(struct inode *inode, struct file *filp)
@@ -199,6 +213,67 @@ loff_t llseek(struct file* file, loff_t offset, int whence)
 	PDEBUG( "llseek return: %lld", ret );
 	return ret;
 }
+
+long aesd_adjust_file_offset(
+		struct file* file,
+		uint32_t write_cmd,
+		uint32_t write_cmd_offset
+)
+{
+	if( write_cmd >= aesd_circular_buffer_get_count( &aesd_device.buffer )  ) {
+		return -EINVAL;
+	}
+	struct aesd_buffer_entry* entry = &aesd_device.buffer.entry[aesd_device.buffer.out_offs + write_cmd];
+	if( write_cmd_offset >= entry->size ) {
+		return -EINVAL;
+	}
+	size_t new_pos = 0;
+	if( 0 != aesd_circular_buffer_fpos_for_entry(
+			&aesd_device.buffer,
+			entry,
+			write_cmd_offset,
+			&new_pos
+	) ) {
+		return -EINVAL;
+	}
+	file->f_pos = new_pos;
+	return 0;
+}
+
+long unlocked_ioctl(struct file* file, unsigned int cmd, unsigned long arg)
+{
+	if (_IOC_TYPE(cmd) != AESD_IOC_MAGIC) return -ENOTTY;
+	if (_IOC_NR(cmd) > AESDCHAR_IOC_MAXNR) return -ENOTTY;
+
+	switch( cmd ) {
+		case AESDCHAR_IOCSEEKTO:
+		{
+			struct aesd_seekto seek_to;
+			if( 0 != copy_from_user(
+					&seek_to,
+					(const void __user* )arg,
+					sizeof(seek_to)
+			) ) {
+				return -EFAULT;
+			}
+			return aesd_adjust_file_offset(
+					file,
+					seek_to.write_cmd,
+					seek_to.write_cmd_offset
+			);
+		}
+		break;
+	  default:  // (redundant, as cmd was checked against MAXNR)
+			return -ENOTTY;
+	}
+	return 0;
+}
+
+/*
+long compat_ioctl(struct file* file, unsigned int cmd, unsigned long arg);
+{
+}
+*/
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
 {
