@@ -415,7 +415,7 @@ ret_t clock_thread(
 			OUTPUT_DEBUG( "clock_thread: STOP\n" );
 			return RET_OK;
 		}
-#ifdef USE_AESD_CHAR_DEVICE
+#ifndef USE_AESD_CHAR_DEVICE
 		OUTPUT_DEBUG( "clock_thread: TICK\n" );
 		current_time = time(NULL);
 		struct tm* local_time = localtime(&current_time);
@@ -615,7 +615,7 @@ ret_t server_exit(data_t* data)
 			e = NULL;
 		}	
 	}
-#ifdef USE_AESD_CHAR_DEVICE
+#ifndef USE_AESD_CHAR_DEVICE
 	if( unlink( output_filename ) ) {
 		perror(output_filename);
 		ret = RET_ERR;

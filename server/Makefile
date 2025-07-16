@@ -7,7 +7,7 @@ DEFINES ?= -DUSE_AESD_CHAR_DEVICE=1
 
 CFLAGS ?= -g -Wall -Wextra
 
-CC ?= $(CROSS_COMPILE)gcc $(DEFINES)
+CC ?= $(CROSS_COMPILE)gcc
 
 LDFLAGS ?= -lpthread -lrt
 
@@ -23,4 +23,4 @@ clean:
 	rm -rf aesdsocket
 
 aesdsocket: server.c server_impl.c server_impl.h
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) $(CFLAGS) $(DEFINES) -o $@ $^ $(LDFLAGS)
