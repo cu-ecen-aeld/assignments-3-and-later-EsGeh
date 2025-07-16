@@ -113,7 +113,7 @@ ssize_t aesd_read(
 	}
 	size_t bytes_to_copy = count;
 	if( entry->size - offset < bytes_to_copy ) {
-		bytes_to_copy = entry->size;
+		bytes_to_copy = entry->size - offset;
 	}
 	if( copy_to_user(
 			buf,
@@ -195,9 +195,11 @@ ssize_t aesd_write(
 			.buffptr = NULL,
 			.size = 0,
 		};
+		/*
 		PDEBUG("write update pos...\n");
 		(*f_pos) += count;
 		PDEBUG( "write: f_pos=%lld\n", *f_pos );
+		*/
 	}
 	mutex_unlock( &aesd_device.lock );
 	return count;
@@ -334,14 +336,17 @@ void aesd_cleanup_module(void)
 {
 	dev_t devno = MKDEV(aesd_major, aesd_minor);
 
+	PDEBUG("clean write buffer\n");
 	// cleanup write buffer:
 	if( aesd_device.current_entry.buffptr != NULL ) {
 		kfree( aesd_device.current_entry.buffptr );
 	}
+	PDEBUG("clean ring buffer\n");
 	// cleanup ring buffer:
-	for( uint8_t i=0; i<aesd_circular_buffer_get_count( &aesd_device.buffer ); i++ ) {
+	unsigned int ring_count = aesd_circular_buffer_get_count( &aesd_device.buffer );
+	for( uint8_t i=0; i<ring_count; i++ ) {
 		struct aesd_buffer_entry* entry = &aesd_device.buffer.entry[
-			aesd_device.buffer.out_offs + i
+			(aesd_device.buffer.out_offs + i) % ring_count
 		];
 		kfree( entry->buffptr );
 		entry->buffptr = NULL;
