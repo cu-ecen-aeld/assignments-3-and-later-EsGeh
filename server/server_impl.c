@@ -113,6 +113,7 @@ ret_t server_init(data_t* data)
 		return RET_ERR;
 	}
 	// open output file
+#ifndef USE_AESD_CHAR_DEVICE
 	{
 		data->output_file = fopen(
 				output_filename,
@@ -123,6 +124,7 @@ ret_t server_init(data_t* data)
 			return RET_ERR;
 		}
 	}
+#endif
 	// cleanup_thread:
 	{
 		int ret = pthread_create(
@@ -267,6 +269,19 @@ ret_t server_run(data_t* data)
 		OUTPUT_INFO( "Accepted connection from %s\n",
 			inet_ntoa( thread_info->client_addr.sin_addr )
 		);
+#ifdef USE_AESD_CHAR_DEVICE
+		if( ! data->output_file ) {
+			data->output_file = fopen(
+					output_filename,
+					"w+"
+			);
+			if( data->output_file == NULL ) {
+				perror(output_filename);
+				return RET_ERR;
+			}
+			thread_info->output_file = data->output_file;
+		}
+#endif
 
 		thread_info->socket_input = fdopen( client_socket_fd, "r" );
 		int fd_copy = dup( client_socket_fd );
