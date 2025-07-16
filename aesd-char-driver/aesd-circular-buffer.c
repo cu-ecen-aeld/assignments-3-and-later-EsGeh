@@ -33,17 +33,17 @@ struct aesd_buffer_entry* aesd_circular_buffer_find_entry_offset_for_fpos(
 )
 {
 	size_t pos_bytes = 0;
-	unsigned int pos = buffer->out_offs;
+	unsigned int index = buffer->out_offs;
 	do
 	{
-		if( char_offset < pos_bytes + buffer->entry[pos].size ) {
+		if( char_offset < pos_bytes + buffer->entry[index].size ) {
 			(*entry_offset_byte_rtn) = char_offset - pos_bytes;
-			return &buffer->entry[pos];
+			return &buffer->entry[index];
 		}
-		pos_bytes += buffer->entry[pos].size;
-		pos = (pos + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+		pos_bytes += buffer->entry[index].size;
+		index = (index + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
 	}
-	while( pos != buffer->out_offs );
+	while( index != buffer->out_offs );
 	return NULL;
 }
 
@@ -55,20 +55,20 @@ int aesd_circular_buffer_fpos_for_entry(
 )
 {
 	size_t pos_bytes = 0;
-	unsigned int pos = buffer->out_offs;
+	unsigned int index = buffer->out_offs;
 	do
 	{
-		if( &buffer->entry[pos] == entry ) {
+		if( &buffer->entry[index] == entry ) {
 			if( entry_offset >= entry->size ) {
 				return 1;
 			}
 			(*fpos) = pos_bytes+entry_offset;
 			return 0;
 		}
-		pos_bytes += buffer->entry[pos].size;
-		pos = (pos + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+		pos_bytes += buffer->entry[index].size;
+		index = (index + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
 	}
-	while( pos != buffer->out_offs );
+	while( index != buffer->out_offs );
 	return 1;
 }
 
@@ -97,13 +97,13 @@ size_t aesd_circular_buffer_get_size(
 )
 {
 	size_t size = 0;
-	unsigned int pos = buffer->out_offs;
+	unsigned int index = buffer->out_offs;
 	do
 	{
-		size += buffer->entry[pos].size;
-		pos = (pos + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+		size += buffer->entry[index].size;
+		index = (index + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
 	}
-	while( pos != buffer->out_offs );
+	while( index != buffer->out_offs );
 	return size;
 }
 
