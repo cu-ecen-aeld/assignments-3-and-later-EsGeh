@@ -71,7 +71,7 @@ struct file_operations aesd_fops = {
 
 int aesd_open(struct inode *inode, struct file *filp)
 {
-	PDEBUG("open");
+	PDEBUG("open\n");
 	/**
 	 * TODO: handle open
 	 */
@@ -80,7 +80,7 @@ int aesd_open(struct inode *inode, struct file *filp)
 
 int aesd_release(struct inode *inode, struct file *filp)
 {
-	PDEBUG("release");
+	PDEBUG("release\n");
 	/**
 	 * TODO: handle release
 	 */
@@ -95,8 +95,8 @@ ssize_t aesd_read(
 )
 {
 	ssize_t ret = 0;
-	mutex_lock( &aesd_device.lock );
 	PDEBUG("read %zu bytes with offset %lld\n",count,*f_pos);
+	mutex_lock( &aesd_device.lock );
 	size_t offset = 0;
 	struct aesd_buffer_entry* entry = aesd_circular_buffer_find_entry_offset_for_fpos(
 			&aesd_device.buffer,
@@ -128,7 +128,7 @@ ssize_t aesd_read(
 	goto end;
 
 end:
-	PDEBUG("read returns: %ld", ret );
+	PDEBUG("read returns: %ld\n", ret );
 	mutex_unlock( &aesd_device.lock );
 	return ret;
 }
@@ -140,8 +140,8 @@ ssize_t aesd_write(
 		loff_t *f_pos
 )
 {
+	PDEBUG("write %zu bytes with offset %lld\n",count,*f_pos);
 	mutex_lock( &aesd_device.lock );
-	PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
 	if( count == 0 ) {
 		mutex_unlock( &aesd_device.lock );
 		return 0;
@@ -166,7 +166,7 @@ ssize_t aesd_write(
 		mutex_unlock( &aesd_device.lock );
 		return -ENOMEM;
 	}
-	PDEBUG("write copying to local...");
+	PDEBUG("write copying to local...\n");
 	// copy to buffer entry:
 	if( copy_from_user(
 			&aesd_device.current_entry.buffptr[insert_pos],
@@ -178,7 +178,7 @@ ssize_t aesd_write(
 	}
 	// copy entry to ringbuffer:
 	if( aesd_device.current_entry.buffptr[insert_pos + count - 1] == '\n' ) {
-		PDEBUG("write to ringbuffer...");
+		PDEBUG("write to ringbuffer...\n");
 		if(
 				aesd_circular_buffer_get_count( &aesd_device.buffer ) == AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED
 		) {
@@ -195,9 +195,9 @@ ssize_t aesd_write(
 			.buffptr = NULL,
 			.size = 0,
 		};
-		PDEBUG("write update pos...");
+		PDEBUG("write update pos...\n");
 		(*f_pos) += count;
-		PDEBUG( "write: f_pos=%lld", *f_pos );
+		PDEBUG( "write: f_pos=%lld\n", *f_pos );
 	}
 	mutex_unlock( &aesd_device.lock );
 	return count;
@@ -205,12 +205,13 @@ ssize_t aesd_write(
 
 loff_t llseek(struct file* file, loff_t offset, int whence)
 {
+	PDEBUG( "llseek: %lld, %d\n", offset, whence );
 	loff_t full_size = aesd_circular_buffer_get_size( &aesd_device.buffer );
-	PDEBUG( "llseek fullsize: %lld", full_size );
+	PDEBUG( "llseek fullsize: %lld\n", full_size );
 	loff_t ret = fixed_size_llseek( file, offset, whence, 
 			full_size
 	);
-	PDEBUG( "llseek return: %lld", ret );
+	PDEBUG( "llseek return: %lld\n", ret );
 	return ret;
 }
 
