@@ -472,6 +472,7 @@ ret_t server_protocol(
 {
 	char buffer[BUFFER_SIZE];
 	void* fgets_ret;
+	bool is_seek_set_command = false;
 	// read from socket, write to file:
 	while( true ) {
 		fgets_ret = fgets( buffer, BUFFER_SIZE, socket_input );
@@ -520,7 +521,8 @@ ret_t server_protocol(
 							OUTPUT_ERR( "ERROR: ioctl failed with: %d - '%s'\n", errno, strerror(errno) );
 							return RET_ERR;
 						}
-						continue;
+						is_seek_set_command = true;
+						break;
 					}
 				}
 			}
@@ -537,9 +539,20 @@ ret_t server_protocol(
 			break;
 		}
 	}
-	// read from file, write to socket:
-	OUTPUT_DEBUG( "rewind\n" );
-	rewind(output_file);
+	if( !is_seek_set_command ) {
+		// read from file, write to socket:
+		OUTPUT_DEBUG( "rewind\n" );
+		rewind(output_file);
+	}
+	else {
+		// synchronize ANSI C FILE*
+		// with underlying linux file descriptor:
+		fseek(output_file, 0, SEEK_CUR );
+	}
+	{ // debug output:
+		long pos = ftell( output_file );
+		OUTPUT_DEBUG( "pos: %ld\n", pos );
+	}
 	// write output_file to socket:
 	while( NULL != fgets( buffer, BUFFER_SIZE, output_file ) ) {
 		int length = strlen( buffer );
@@ -550,7 +563,7 @@ ret_t server_protocol(
 		}
 	}
 	if( !feof( output_file ) ) {
-		OUTPUT_ERR( "ERROR: failed reading output file\n" );
+		OUTPUT_ERR( "ERROR: failed reading output file: %d - %s\n", errno, strerror(errno) );
 		return RET_ERR;
 	}
 	return RET_OK;
