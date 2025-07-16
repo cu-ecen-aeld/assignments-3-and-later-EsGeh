@@ -474,28 +474,30 @@ ret_t server_protocol(
 		OUTPUT_DEBUG( "received %d bytes\n", length );
 		// AESDCHAR_IOCSEEKTO:X,Y
 		{
-			const char* prefix = "AESDCHAR_IOCSEEKTO";
+			const char* prefix = "AESDCHAR_IOCSEEKTO:";
 			const int prefix_length = strlen( prefix );
 			if(
 					!strncmp( prefix, buffer, strlen(prefix) )
 					&& length > prefix_length
-					&& buffer[prefix_length] == ':'
 					&& (strchr( &buffer[prefix_length+1], ',' ) != NULL)
 			) {
 				OUTPUT_DEBUG( "AESDCHAR_IOCSEEKTO found!\n" );
 				int x = 0;
 				char* endptr = NULL;
-				char* current_str = &buffer[prefix_length+1];
+				char* current_str = &buffer[prefix_length];
 				x = strtol( current_str, &endptr, 10);
 				if( endptr != current_str && endptr[0] == ',' ) {
+					OUTPUT_DEBUG( "AESDCHAR_IOCSEEKTO found1!\n" );
 					current_str = endptr+1;
 					int y = strtol( current_str, &endptr, 10);
-					if( endptr != current_str && endptr[0] == '\0' ) {
+					if( endptr != current_str ) {
+						OUTPUT_DEBUG( "AESDCHAR_IOCSEEKTO found2!\n" );
 						struct aesd_seekto seek_to = {
 							.write_cmd = x,
 							.write_cmd_offset = y,
 						};
-						if( !ioctl(
+						OUTPUT_DEBUG( "AESDCHAR_IOCSEEKTO %d,%d!\n", seek_to.write_cmd, seek_to.write_cmd_offset );
+						if( -1 == ioctl(
 								fileno(output_file),
 								AESDCHAR_IOCSEEKTO,
 								&seek_to

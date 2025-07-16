@@ -220,7 +220,8 @@ long aesd_adjust_file_offset(
 		uint32_t write_cmd_offset
 )
 {
-	if( write_cmd >= aesd_circular_buffer_get_count( &aesd_device.buffer )  ) {
+	PDEBUG("aesd_adjust_file_offset\n" );
+	if( write_cmd >= aesd_circular_buffer_get_count( &aesd_device.buffer ) ) {
 		return -EINVAL;
 	}
 	struct aesd_buffer_entry* entry = &aesd_device.buffer.entry[aesd_device.buffer.out_offs + write_cmd];
@@ -237,13 +238,17 @@ long aesd_adjust_file_offset(
 		return -EINVAL;
 	}
 	file->f_pos = new_pos;
+	PDEBUG( "aesd_adjust_file_offset, apply %ld\n", new_pos );
 	return 0;
 }
 
 long unlocked_ioctl(struct file* file, unsigned int cmd, unsigned long arg)
 {
-	if (_IOC_TYPE(cmd) != AESD_IOC_MAGIC) return -ENOTTY;
-	if (_IOC_NR(cmd) > AESDCHAR_IOC_MAXNR) return -ENOTTY;
+	PDEBUG("unlocked_ioctl %d, _IOC_NR: %d\n", cmd, _IOC_NR(cmd) );
+	if( _IOC_TYPE(cmd) != AESD_IOC_MAGIC )
+		return -ENOTTY;
+	if( _IOC_NR(cmd) > AESDCHAR_IOC_MAXNR )
+		return -ENOTTY;
 
 	switch( cmd ) {
 		case AESDCHAR_IOCSEEKTO:
@@ -256,6 +261,7 @@ long unlocked_ioctl(struct file* file, unsigned int cmd, unsigned long arg)
 			) ) {
 				return -EFAULT;
 			}
+			PDEBUG("unlocked_ioctl set %d,%d\n", seek_to.write_cmd, seek_to.write_cmd_offset);
 			return aesd_adjust_file_offset(
 					file,
 					seek_to.write_cmd,
